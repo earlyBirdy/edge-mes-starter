@@ -1,0 +1,3 @@
+{"ts": "2025-08-22T07:00:12Z", "resource_id": "SMT01", "work_order_id": "WO123", "operation_id": "OP10", "sensor": "temp", "value": 37.2, "unit": "C", "meta": {"site": "BKK"}}
+{"ts": "2025-08-22T07:00:14Z", "resource_id": "SMT01", "work_order_id": "WO123", "operation_id": "OP10", "sensor": "temp", "value": 37.5, "unit": "C", "meta": {"site": "BKK"}}
+{"ts": "2025-08-22T07:00:16Z", "resource_id": "SMT01", "work_order_id": "WO123", "operation_id": "OP10", "sensor": "humidity", "value": 45.0, "unit": "%", "meta": {"site": "BKK"}}

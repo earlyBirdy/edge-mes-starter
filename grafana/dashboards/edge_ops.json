@@ -1,0 +1,250 @@
+{
+  "id": null,
+  "title": "Edge \u2192 MES Live KPIs",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "templating": {
+    "list": [
+      {
+        "name": "resource",
+        "label": "Resource",
+        "type": "query",
+        "datasource": "TimescaleDB",
+        "query": "SELECT DISTINCT resource_id FROM readings WHERE resource_id IS NOT NULL ORDER BY 1",
+        "refresh": 1
+      },
+      {
+        "name": "sensor",
+        "label": "Sensor",
+        "type": "query",
+        "datasource": "TimescaleDB",
+        "query": "SELECT DISTINCT sensor FROM readings ORDER BY 1",
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Sensor Values",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__time(ts) AS time, value, sensor FROM readings WHERE $__timeFilter(ts) AND (${resource:raw} IS NULL OR resource_id = '${resource}') AND (${sensor:raw} IS NULL OR sensor = '${sensor}') ORDER BY 1",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Latest Value",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT value FROM readings WHERE (${resource:raw} IS NULL OR resource_id='${resource}') AND (${sensor:raw} IS NULL OR sensor='${sensor}') ORDER BY ts DESC LIMIT 1",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Latest by Sensor",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT DISTINCT ON (sensor) sensor, value, unit, ts FROM readings WHERE (${resource:raw} IS NULL OR resource_id='${resource}') ORDER BY sensor, ts DESC LIMIT 200",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "SPC - Temperature with UCL/LCL",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "\nWITH stats AS (\n  SELECT sensor, avg(value) AS mean, stddev(value) AS sigma\n  FROM readings\n  WHERE sensor = 'temp' AND $__timeFilter(ts)\n  GROUP BY sensor\n)\nSELECT $__time(ts) AS time, value,\n       (SELECT mean FROM stats) AS mean,\n       (SELECT mean + 3*sigma FROM stats) AS ucl,\n       (SELECT mean - 3*sigma FROM stats) AS lcl\nFROM readings\nWHERE sensor = 'temp' AND $__timeFilter(ts)\nORDER BY ts;\n",
+          "refId": "SPC"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Hourly OEE (%)",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "\nSELECT date_trunc('hour', ts) AS time,\n       resource_id,\n       0.92 AS availability,  -- replace with real op_run calc\n       0.95 AS performance,\n       0.98 AS quality,\n       (0.92*0.95*0.98*100)::numeric AS oee\nFROM readings\nWHERE $__timeFilter(ts)\nGROUP BY 1,2\nORDER BY 1;\n",
+          "refId": "OEE"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "SPC (mean / \u00b13\u03c3) \u2014 ${sensor}",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH stats AS (\n  SELECT sensor,\n         avg(value) AS mean,\n         stddev(value) AS sigma\n  FROM readings\n  WHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\n    AND (${sensor:raw} IS NULL OR sensor = '${sensor}')\n    AND $__timeFilter(ts)\n  GROUP BY sensor\n)\nSELECT\n  $__time(ts) AS time,\n  value,\n  (SELECT mean FROM stats) AS mean,\n  (SELECT mean + 3*sigma FROM stats) AS ucl,\n  (SELECT mean - 3*sigma FROM stats) AS lcl\nFROM readings\nWHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\n  AND (${sensor:raw} IS NULL OR sensor = '${sensor}')\n  AND $__timeFilter(ts)\nORDER BY ts\n",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "OEE by Hour (demo calc)",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT\n  date_trunc('hour', ts) AS time,\n  (${resource:raw})::text AS resource_id,\n  0.92 AS availability,      -- replace with op_run data in prod\n  0.95 AS performance,       -- replace with actual cycle vs ideal\n  0.98 AS quality,           -- derive from yield/defect metrics\n  0.92*0.95*0.98 AS oee\nFROM readings\nWHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\n  AND $__timeFilter(ts)\nGROUP BY 1\nORDER BY 1\n",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Latest OEE (demo calc)",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 60
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "WITH hourly AS (\n  SELECT date_trunc('hour', ts) AS hour_bucket\n  FROM readings\n  WHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\n    AND $__timeFilter(ts)\n  ORDER BY 1 DESC\n  LIMIT 1\n)\nSELECT\n  0.92*0.95*0.98 AS oee\nFROM hourly\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Real OEE by Shift (Availability \u00d7 Performance \u00d7 Quality)",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT shift_start AS time,\n       resource_id,\n       availability, performance, quality, oee\nFROM v_oee_shift_real\nWHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\n  AND shift_start BETWEEN $__timeFrom() AND $__timeTo()\nORDER BY 1\n",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Latest Real OEE",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 74
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT oee\nFROM v_oee_shift_real\nWHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\nORDER BY shift_start DESC\nLIMIT 1\n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Shift Calendar (Asia/Bangkok)",
+      "datasource": "TimescaleDB",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 78
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT shift_name, shift_start, shift_end\nFROM (\n  SELECT DISTINCT shift_name, shift_start, shift_end\n  FROM v_oee_shift_real\n  WHERE (${resource:raw} IS NULL OR resource_id = '${resource}')\n    AND shift_start BETWEEN $__timeFrom() AND $__timeTo()\n) s\nORDER BY shift_start DESC\n"
+        }
+      ]
+    }
+  ],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  }
+}
