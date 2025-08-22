@@ -58,8 +58,6 @@ This stack is designed for industries where **real-time visibility and quality m
    └─ Shift calendar (Day/Evening/Night)
 ```
 
-![Edge to MES/SFC Data Flow (SVG)](edge_mes_architecture.svg)
-
 ![Edge to MES/SFC Data Flow (PNG)](edge_mes_architecture.png)
 
 ---
